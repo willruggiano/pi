@@ -9,14 +9,11 @@
   makeBinaryWrapper,
   ripgrep,
   nodejs,
-  packageJson,
   platforms,
-  source,
   stdenv,
   wl-clipboard,
   xclip,
 }:
-
 let
   inherit (lib)
     importJSON
@@ -31,7 +28,7 @@ let
   # Lockfile root used by the pi.dev installer. It pins the coding agent's
   # runtime dependency tree and is kept in sync with package-lock.json by
   # `npm run check`.
-  installLock = source + "/packages/coding-agent/install-lock";
+  installLock = ../packages/coding-agent/install-lock;
   modelCatalogPin = importJSON ./model-catalog.json;
   modelCatalog = fetchurl {
     name = "pi-model-catalog.json";
@@ -39,13 +36,14 @@ let
     url = "https://pi.dev/api/models/revisions/${modelCatalogPin.revision}?types=chat,image,classifier";
     sha256 = removePrefix "sha256-" modelCatalogPin.revision;
   };
-
+  packageJson = importJSON ../packages/coding-agent/package.json;
   workspacePackages = stdenv.mkDerivation {
     pname = "pi-workspace-packages";
     inherit (packageJson) version;
-    src = source;
+    # TODO: use glob/fileset
+    src = ../.;
 
-    npmDeps = importNpmLock { npmRoot = source; };
+    npmDeps = importNpmLock { npmRoot = ../.; };
     npmRebuildFlags = [ "--ignore-scripts" ];
 
     nativeBuildInputs = [

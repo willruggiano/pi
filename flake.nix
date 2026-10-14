@@ -1,5 +1,5 @@
 {
-  description = "A lightweight coding agent with minimal configuration, multi-provider LLM support, and an extensible architecture.";
+  description = "Coding agent CLI with read, bash, edit, write tools and session management";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -16,65 +16,44 @@
       nixpkgs-darwin-x64,
     }:
     let
+      inherit (nixpkgs) lib;
       systems = [
         "aarch64-darwin"
         "aarch64-linux"
         "x86_64-darwin"
         "x86_64-linux"
       ];
-
-      nixpkgsFor =
-        system:
-        (if system == "x86_64-darwin" then nixpkgs-darwin-x64 else nixpkgs).legacyPackages.${system};
-      inherit (nixpkgs) lib;
-
-      forAllSystems = lib.genAttrs systems;
-
-      perSystem =
-        system:
-        let
-          pkgs = nixpkgsFor system;
-          source = self;
-          nodejs = pkgs.nodejs_22;
-          packageJson = pkgs.lib.importJSON "${source}/packages/coding-agent/package.json";
-          treefmtWrapper = import ./nix/treefmt.nix {
-            inherit pkgs source;
-          };
-          pi = pkgs.callPackage ./nix/package.nix {
-            inherit
-              source
-              nodejs
-              packageJson
-              ;
-            platforms = systems;
-          };
-        in
-        {
-          inherit pkgs pi treefmtWrapper;
-        };
+      eachSystem =
+        f:
+        lib.genAttrs systems (
+          system:
+          let
+            pkgs = import (if system == "x86_64-darwin" then nixpkgs-darwin-x64 else nixpkgs) {
+              inherit system;
+              overlays = [ self.overlays.default ];
+            };
+          in
+          f pkgs
+        );
     in
     {
-      packages = forAllSystems (system: {
-        default = (perSystem system).pi;
-        pi = (perSystem system).pi;
+      packages = eachSystem (pkgs: {
+        default = pkgs.pi;
+        inherit (pkgs) pi;
       });
 
-      formatter = forAllSystems (system: (perSystem system).treefmtWrapper);
+      formatter = eachSystem (pkgs: pkgs.callPackage ./nix/treefmt.nix { });
 
-      apps = forAllSystems (system: rec {
-        default = pi;
-        pi = {
+      apps = eachSystem (pkgs: {
+        default = {
           type = "app";
-          program = lib.getExe (perSystem system).pi;
-          meta.description = (perSystem system).pi.meta.description;
+          program = lib.getExe pkgs.pi;
+          meta.description = pkgs.pi.meta.description;
         };
       });
 
-      overlays.default = final: _previous: {
-        pi = final.callPackage ./nix/package.nix {
-          source = self;
-          platforms = systems;
-        };
+      overlays.default = _: prev: {
+        pi = prev.callPackage ./nix/package.nix { platforms = systems; };
       };
     };
 }
